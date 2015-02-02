@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset='utf-8'>
+        <meta http-equiv='X-UA-Compatible' content='IE=edge,chrome=1'>
+        <title>Realm</title>
+        <meta name='description' content='A real-time fractal explorer which runs in your browser'>
+        <meta name='viewport' content='width=device-width, initial-scale=1'>
+
+        <link rel='stylesheet' href='css/normalize.min.css'>
+        <link rel='stylesheet' href='css/main.css'>
+        
+        <script src='js/vendor/gl-matrix-min.js'></script>
+        <script src='js/vendor/dat.gui.min.js'></script>
+
+        <script>
+          (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+          (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+          m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+          })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+          ga('create', 'UA-48809051-3', 'auto');
+          ga('send', 'pageview');
+        </script>
+    </head>
+    <body>
+
+        <canvas id='canvas' oncontextmenu='return false;'></canvas>
+
+        <div id='overlay'>
+            <div id='controls-container'>
+                <h1>Controls</h1>
+                <div>
+                    <ul> 
+                        <li><b>Zoom:</b> Hold <strong>r</strong> or <strong>f</strong> (Recommended)</li>
+                        <li><b>Move Camera:</b> Hold <strong>w</strong>, <strong>a</strong>, <strong>s</strong>, <strong>d</strong>, <strong>e</strong>, or <strong>q</strong></li>
+                        <li><b>Reset Camera:</b> Press space</li>
+                    </ul>
+                    <ul>
+                        <li><b>Transform Fractal:</b> Hold mouse button</li>
+                        <li><b>Change Iterations:</b> Use mousewheel</li>
+                    </ul>
+                </div>
+                <p>Click anywhere to begin</p>
+            </div>
+        </div>
+
+        <script type='text/javascript'>
+            function hideOverlay(e){
+                document.getElementById('overlay').classList.add('hidden');
+                e.target.removeEventListener(e.type, hideOverlay);
+            }
+
+            document.getElementById('canvas').addEventListener('mousedown', hideOverlay);
+        </script>
+
+        <script id='vertex-shader' type='x-shader/x-vertex'>
+            attribute vec2 a_position;
+
+            varying vec2 v_coord;
+
+            void main() {
+                vec2 clipSpace = a_position * 2.0 - 1.0;
+                gl_Position = vec4(clipSpace, 0, 1);
+
+                v_coord = a_position;
+            }
+        </script>
+
+        <script id='fragment-shader' type='x-shader/x-fragment'>
+            precision mediump float;
+
+            uniform float u_aspectRatio;
+            uniform vec3 u_pos;
+            uniform vec3 u_forward;
+            uniform vec3 u_up;
+            uniform vec3 u_right;
+            uniform float u_fov;
+            uniform vec3 u_julia;
+            uniform int u_iterations;
+            uniform float u_time;
+
+            //fractal params
+            uniform float u_altColor;
+            uniform float u_altColorIntensity;
+            uniform float u_sphereShrink;
+
+            varying vec2 v_coord;
+
+            #define TWOPI 6.28318530718
+
+            vec3 hsv(vec3 c) {
+                vec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
+                vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
+                return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
+            }
+
+            float intersectSphere(vec3 ro, vec3 rd, vec3 c, float r) {
+                vec3 dirToSph = ro - c;
+                float b = dot(rd, dirToSph);
+                return -b + sqrt(b*b - dot(dirToSph, dirToSph) + r*r);
+            }
+
+            mat2 rotate2D(float r) {
+                return mat2(cos(r), sin(r), -sin(r), cos(r));
+            }
+            
+            void main() {
+        
+                vec3 ro = u_pos;
+                vec2 uv = (v_coord - 0.5) * vec2(u_aspectRatio, 1);
+                vec3 lineOrigin = -u_fov*vec3(uv.x*u_right + uv.y*u_up);
+                vec3 lineDir = normalize(lineOrigin - u_forward);
+                vec3 rd = -(lineOrigin + intersectSphere(lineOrigin, lineDir, vec3(0), 1.0)*lineDir);
+
+                vec3 j = u_julia * TWOPI;
+                mat2 rot1 = rotate2D(j.x);
+                mat2 rot2 = rotate2D(j.y);
+                mat2 rot3 = rotate2D(j.z);
+
+                vec3 c = vec3(1.0/9.0)*u_altColorIntensity;
+                float hueShift = fract(u_time / 60.0);
+                float saturationMix = clamp(sin(u_time*0.2)*5.0+0.5, 0.0, 1.0);
+
+                vec3 color = vec3(0);
+                for (int i = 0; i < 64; i++) {
+                    if (i >= u_iterations) break;
+                    float d = intersectSphere(ro, rd, vec3(0), 1.0-u_sphereShrink*float(i));
+                    vec3 p = ro + rd*d;
+                    ro = p * u_altColorIntensity;
+                    ro.xy *= rot1;
+                    ro.yz *= rot2;
+                    ro.zx *= rot3;
+                    ro = abs(ro - c);
+                    rd = normalize(ro);
+                    float dotprd = dot(p,rd);
+                    color += hsv(vec3(float(i)/10.0 + u_altColor*length(ro) + hueShift, 
+                                      mix(1.0-abs(dotprd), abs(dotprd), saturationMix), 
+                                      1.0));
+                }
+
+                color = sin(color)*0.5+0.5;
+                gl_FragColor = vec4(color, 1);
+            }
+        </script>
+
+        <script src="js/main.js"></script>
+    </body>
+</html>
