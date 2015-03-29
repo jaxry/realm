@@ -52,7 +52,7 @@ function init() {
     };
     window.onresize();
 
-    time = new TimeObject();
+    time = new Time();
     camera = CameraHandler();
     InputHandler();
     program = GLHandler();
@@ -155,7 +155,7 @@ function InputHandler() {
 
 }
 
-function TimeObject() {
+function Time() {
 
     this.start = Date.now();
     this.previous = this.start;
@@ -173,10 +173,10 @@ function TimeObject() {
 
 function CameraHandler() {
     var cam = {
-            pos: vec3.fromValues(0, 0, 0),
-            forward: vec3.fromValues(1, 0, 0),
-            right: vec3.fromValues(0, 1, 0),
-            up: vec3.fromValues(0, 0, 1),
+            pos: $V([0, 0, 0]),
+            forward: $V([1, 0, 0]),
+            right: $V([0, 1, 0]),
+            up: $V([0, 0, 1]),
             fov: 1
         },
 
@@ -188,8 +188,7 @@ function CameraHandler() {
             transUp: 0,
             zoom: 0
         },
-        update = true,
-        timeToNormalize = 0;
+        update = true;
 
     cam.initialize = function() {
         cam.pos = vec3.fromValues(0, 0, 0);
@@ -219,32 +218,22 @@ function CameraHandler() {
         if (update) {
 
             if (input.rotateX !== 0 || input.rotateY !== 0) {
-                var rotation = quat.create();
-                
-                quat.setAxisAngle(rotation, cam.up, input.rotateX);
-                vec3.transformQuat(cam.forward, cam.forward, rotation);
-                vec3.transformQuat(cam.right, cam.right, rotation);
+                var up = $L(Vector.Zero(3), cam.up);
+                cam.forward = cam.forward.rotate(input.rotateX, up);
+                cam.right = cam.up.cross(cam.forward);
 
-                quat.setAxisAngle(rotation, cam.right, input.rotateY);
-                vec3.transformQuat(cam.forward, cam.forward, rotation);
-                vec3.transformQuat(cam.up, cam.up, rotation);
-
-                timeToNormalize++;
+                var right = $L(Vector.Zero(3), cam.right);
+                cam.forward = cam.forward.rotate(input.rotateY, right);
+                cam.up = cam.forward.cross(cam.right);
             }
 
-            var distToSphere = 1 - vec3.length(cam.pos);
-            if (input.transForward !== 0) vec3.scaleAndAdd(cam.pos, cam.pos, cam.forward, input.transForward*distToSphere);
-            if (input.transRight !== 0) vec3.scaleAndAdd(cam.pos, cam.pos, cam.right, input.transRight*distToSphere);
-            if (input.transUp !== 0) vec3.scaleAndAdd(cam.pos, cam.pos, cam.up, input.transUp*distToSphere);
+            var distToSphere = 1 - cam.pos.modulus();
+            if (input.transForward !== 0) cam.pos = cam.pos.add(cam.forward.x(input.transForward*distToSphere));
+            if (input.transRight !== 0) cam.pos = cam.pos.add(cam.right.x(input.transRight*distToSphere));
+            if (input.transUp !== 0) cam.pos = cam.pos.add(cam.up.x(input.transUp*distToSphere));
 
             params.actualSensitivity = Math.min(constants.sensitivity.rotate * cam.fov, constants.sensitivity.rotate);
 
-            if (timeToNormalize > 500) {
-                vec3.cross(cam.right, cam.up, cam.forward);
-                vec3.cross(cam.up, cam.forward, cam.right);
-                timeToNormalize = 0;
-            }
-            
             for (var prop in input) {
                 input[prop] = 0;
             }
@@ -289,10 +278,10 @@ function GLHandler() {
 
     return {
         updateCameraUniforms: function() {
-            gl.uniform3fv(prog.u_pos, camera.pos);
-            gl.uniform3fv(prog.u_forward, camera.forward);
-            gl.uniform3fv(prog.u_up, camera.up);
-            gl.uniform3fv(prog.u_right, camera.right);
+            gl.uniform3fv(prog.u_pos, camera.pos.elements);
+            gl.uniform3fv(prog.u_forward, camera.forward.elements);
+            gl.uniform3fv(prog.u_up, camera.up.elements);
+            gl.uniform3fv(prog.u_right, camera.right.elements);
             gl.uniform1f(prog.u_fov, camera.fov);
         },
 
@@ -301,7 +290,6 @@ function GLHandler() {
         draw: function() {
             camera.update();
             gl.uniform1f(prog.u_aspectRatio, constants.aspectRatio);
-            // gl.uniform2fv(prog.u_pixelSize, constants.pixelSize);
             gl.uniform3f(prog.u_julia, params.juliaX, params.juliaY, params.juliaZ);
             gl.uniform1f(prog.u_time, time.elapsedStart);
             gl.drawArrays(gl.TRIANGLE_FAN, 0, 4);
@@ -325,7 +313,7 @@ function initGui() {
     var fractal = gui.addFolder('Fractal Parameters');
     fractal.add(controller, 'rotationRate', 0, 5).name('Rotation Rate').onChange(setrotationRate);
     fractal.add(params, 'altColor', 0, 100).step(1).name('Alt. Color').onChange(program.updateUniforms);
-    fractal.add(params, 'altColorIntensity', 0, 32).step(1).name('Alt. Color Intensity').onChange(program.updateUniforms);
+    fractal.add(params, 'altColorIntensity', 1, 32).step(1).name('Color Intensity').onChange(program.updateUniforms);
     fractal.add(params, 'sphereShrink', 0, 4).step(0.01).name('Sphere Shrink').onChange(program.updateUniforms);
 
     function setrotationRate() {
