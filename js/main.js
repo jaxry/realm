@@ -191,7 +191,7 @@ function CameraHandler() {
         update = true;
 
     cam.initialize = function() {
-        cam.pos = vec3.fromValues(0, 0, 0);
+        cam.pos = $V([0, 0, 0]);
         cam.fov = 1;
         update = true;
     };
